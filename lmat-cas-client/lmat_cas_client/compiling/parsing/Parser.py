@@ -27,6 +27,7 @@ class Parser:
         self._pre_processor = pre_processor
         self._lark_parser = lark_parser
 
+
     @property
     def parser(self) -> Lark:
         return self._lark_parser
@@ -46,6 +47,9 @@ class Parser:
         """
 
         pre_processed_text = self._pre_processor(text)
+        # ignore LHS of equations
+        if "=" in pre_processed_text:
+            pre_processed_text = self.extract_probability_expression(pre_processed_text)
 
         try:
             return self._lark_parser.parse(pre_processed_text, *args, **kwargs)
@@ -124,3 +128,34 @@ class Parser:
             pretty_terminals.append(term_name.replace("_", " ").capitalize().strip())
 
         return pretty_terminals
+
+    def detect_probability_statement(self, pre_processed_text: str) -> bool:
+        """
+        Detects if the given text is a probability statement, by checking if it starts with "P(".
+
+        Args:
+            text (str)
+
+        Returns:
+            bool
+        """
+        return pre_processed_text.strip().startswith("P(")
+
+    def extract_probability_expression(self, pre_processed_text: str) -> str:
+        """
+        Extracts the probability expression from the given text, by splitting on the first "=" and returning the right hand side.
+
+        Args:
+            text (str)
+
+        Returns:
+            str: right hand side of the equation, with leading and trailing whitespace removed.
+        """
+        if "=" in pre_processed_text:
+            left, right = pre_processed_text.split("=", 1)
+
+            if left.strip().startswith("P("):
+                return right.strip()
+
+        return pre_processed_text
+
