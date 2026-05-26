@@ -5,10 +5,9 @@ from typing import Callable, Iterator
 from lark import Lark, Token
 from lark.lark import PostLex
 from lark.lexer import TerminalDef
+from lmat_cas_client.compiling.parsing.Parser import Parser
 from regex import Regex
 from sympy import *
-
-from lmat_cas_client.compiling.parsing.Parser import Parser
 
 
 # Represents a scope to be handled by the ScopePostLexer.
@@ -250,6 +249,56 @@ def latex_comment_remover(latex: str) -> str:
         lambda m: m.group(0).replace(m.group(1), ""), latex
     )
 
+def detect_probability_statement(pre_processed_text: str) -> bool:
+	"""
+	Detects if the given text is a probability statement, by checking if it starts with "P(".
+
+	Args:
+		text (str)
+
+	Returns:
+		bool
+	"""
+	return regex.match(r'\s*P\s*\(', pre_processed_text) is not None
+
+def extract_probability_expression(pre_processed_text: str) -> str:
+	text = pre_processed_text.strip()
+
+	# On approx just use equal and let the user deal with it, since the parser does not support \approx and it is not crucial to distinguish it from = in most cases.
+	text = text.replace(r'\approx', '=')
+
+	# Remove P(N(...)=...), P(N(...)\geq...), etc.
+	text = regex.sub(
+		r'^\s*P\s*\((?:[^()]+|\((?:[^()]+|\([^()]*\))*\))*\)',
+		'',
+		text
+	)
+
+	# 3. Split on first "="
+	if "=" in text:
+		_, text = text.split("=", 1)
+
+	text = text.strip()
+
+	# 4. Fix broken decimals like "0."
+	text = regex.sub(r'(\d+)\.\s*(\D|$)', r'\1\2', text)
+
+	return text
+
+def probability_statement_pre_processor(pre_processed_text: str) -> str:
+	"""
+	Pre-processor for probability statements, which removes the "P(...)" wrapper and normalizes some common LaTeX patterns.
+
+	Args:
+		pre_processed_text (str)
+	Returns:
+		str
+	"""
+	pre_processed_text = latex_comment_remover(pre_processed_text)
+	if detect_probability_statement(pre_processed_text):
+		return extract_probability_expression(pre_processed_text)
+	else:
+		return pre_processed_text
 
 GRAMMAR_FILE = "latex_math_grammar.lark"
 
@@ -269,7 +318,7 @@ latex_parser = Parser(
         regex=True,
         postlex=__latex_parser_post_lexer,
     ),
-    pre_processor=latex_comment_remover,
+    pre_processor=probability_statement_pre_processor,
 )
 """
 PrettyParser instance capable of parsing a latex math string.
